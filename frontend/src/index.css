@@ -1,0 +1,187 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300..700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Paleta de marca. Va con prefijo qp- para NO chocar con los tokens de
+   shadcn/ui, que se definen más abajo en @layer base y deben estar en
+   formato HSL sin envolver, porque Tailwind los usa como hsl(var(--token)).
+   Antes ambos bloques declaraban --primary y --background: el de aquí ganaba
+   por no estar en una capa, y eso rompía bg-primary y bg-background. */
+:root {
+    --qp-background: #050505;
+    --qp-surface: #0A0A0A;
+    --qp-surface-highlight: #171717;
+    --qp-border: #262626;
+    --qp-primary: #CCFF00;
+    --qp-primary-foreground: #000000;
+    --qp-secondary: #7000FF;
+    --qp-text-main: #FFFFFF;
+    --qp-text-muted: #A3A3A3;
+    --qp-success: #00FF94;
+    --qp-error: #FF3B30;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 400;
+    background-color: var(--qp-background);
+    color: var(--qp-text-main);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--qp-surface);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--qp-border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--qp-text-muted);
+}
+
+/* Tailwind overrides for dark theme */
+@layer base {
+    :root {
+        --background: 0 0% 2%;
+        --foreground: 0 0% 100%;
+        --card: 0 0% 4%;
+        --card-foreground: 0 0% 100%;
+        --popover: 0 0% 4%;
+        --popover-foreground: 0 0% 100%;
+        --primary: 73 100% 50%;
+        --primary-foreground: 0 0% 0%;
+        --secondary: 270 100% 50%;
+        --secondary-foreground: 0 0% 100%;
+        --muted: 0 0% 9%;
+        --muted-foreground: 0 0% 64%;
+        --accent: 0 0% 9%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 0 0% 15%;
+        --input: 0 0% 15%;
+        --ring: 73 100% 50%;
+        --radius: 0.75rem;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+/* Glassmorphism utility */
+.glass {
+    background: rgba(10, 10, 10, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Animation utilities */
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(204, 255, 0, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 40px rgba(204, 255, 0, 0.5);
+    }
+}
+
+.animate-fade-in {
+    animation: fade-in 0.5s ease-out forwards;
+}
+
+.animate-slide-up {
+    animation: slide-up 0.6s ease-out forwards;
+}
+
+.animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Staggered animation delays */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }
+
+/* Hero glow effect */
+.hero-glow {
+    background: radial-gradient(circle at 50% 0%, rgba(112, 0, 255, 0.15) 0%, transparent 70%);
+}
+
+/* Card hover effect */
+.card-hover {
+    transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+    background: linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+    border-color: rgba(204, 255, 0, 0.5);
+    transform: translateY(-4px);
+}
+
+/* Debug wrapper for development */
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}
