@@ -61,29 +61,55 @@ const AdminPanel = () => {
 
   const headers = { Authorization: `Bearer ${token}` };
 
+  /*
+   * Cada recurso se carga por separado con allSettled, NO con Promise.all.
+   * Con Promise.all, un solo endpoint caído rechazaba todo el lote y el panel
+   * quedaba completamente en blanco: pasó de verdad cuando el backend estaba
+   * desactualizado y /admin/amenities respondía 404, tumbando también
+   * categorías, negocios, banners y usuarios, que sí funcionaban.
+   */
   const loadAll = useCallback(async () => {
     setIsLoading(true);
-    try {
-      const [s, b, c, bn, u, am] = await Promise.all([
-        axiosInstance.get("/admin/stats", { headers }),
-        axiosInstance.get("/admin/businesses", { headers }),
-        axiosInstance.get("/admin/categories", { headers }),
-        axiosInstance.get("/admin/banners", { headers }),
-        axiosInstance.get("/admin/users", { headers }),
-        axiosInstance.get("/admin/amenities", { headers }),
-      ]);
-      setStats(s.data);
-      setBusinesses(b.data);
-      setCategories(c.data);
-      setBanners(bn.data);
-      setUsers(u.data);
-      setAmenities(am.data);
-    } catch (error) {
-      toast.error("No se pudieron cargar los datos del panel");
-    } finally {
-      setIsLoading(false);
-      setPrimeraCarga(false);
+
+    const recursos = [
+      { nombre: "estadísticas", url: "/admin/stats",      set: setStats,      vacio: null },
+      { nombre: "negocios",     url: "/admin/businesses", set: setBusinesses, vacio: [] },
+      { nombre: "categorías",   url: "/admin/categories", set: setCategories, vacio: [] },
+      { nombre: "banners",      url: "/admin/banners",    set: setBanners,    vacio: [] },
+      { nombre: "usuarios",     url: "/admin/users",      set: setUsers,      vacio: [] },
+      { nombre: "amenidades",   url: "/admin/amenities",  set: setAmenities,  vacio: [] },
+    ];
+
+    const resultados = await Promise.allSettled(
+      recursos.map((r) => axiosInstance.get(r.url, { headers }))
+    );
+
+    const fallidos = [];
+    resultados.forEach((res, i) => {
+      const r = recursos[i];
+      if (res.status === "fulfilled") {
+        r.set(res.value.data);
+      } else {
+        r.set(r.vacio);
+        fallidos.push({ nombre: r.nombre, estado: res.reason?.response?.status });
+      }
+    });
+
+    if (fallidos.length) {
+      const cuatroCientoCuatro = fallidos.filter((f) => f.estado === 404);
+      if (cuatroCientoCuatro.length) {
+        toast.error(
+          `El backend no reconoce: ${cuatroCientoCuatro.map((f) => f.nombre).join(", ")}. ` +
+          "Parece que está desactualizado respecto al frontend.",
+          { duration: 10000 }
+        );
+      } else {
+        toast.error(`No se pudieron cargar: ${fallidos.map((f) => f.nombre).join(", ")}`);
+      }
     }
+
+    setIsLoading(false);
+    setPrimeraCarga(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 

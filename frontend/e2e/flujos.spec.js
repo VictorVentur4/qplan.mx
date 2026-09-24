@@ -110,7 +110,11 @@ async function login(page, email) {
   ok('el admin aterriza en /admin', page.url().includes('/admin'), page.url());
 
   const admin = await page.textContent('body');
-  ok('ve TODOS los negocios', admin.includes('Cafe Central') && admin.includes('Tacos El Paso'));
+  await page.locator('button[role="tab"]', { hasText: 'Negocios' }).click();
+  await page.waitForTimeout(1500);
+  const listado = await page.textContent('body');
+  ok('ve TODOS los negocios',
+     listado.includes('Cafe Central') && listado.includes('Tacos El Paso'));
   await page.locator('button[role="tab"]', { hasText: 'Negocios' }).click();
   await page.waitForTimeout(1500);
   const filasAdmin = await p2CountRows(page);

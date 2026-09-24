@@ -30,13 +30,19 @@ const BusinessPanel = () => {
 
   const load = useCallback(async () => {
     setIsLoading(true);
+
+    // Las categorías son accesorias: solo dan la etiqueta y el icono. Si
+    // fallan, el dueño debe poder ver y editar su negocio igual, así que se
+    // piden por separado y su error no interrumpe nada.
+    axiosInstance.get("/categories")
+      .then(({ data }) => setCategories(data))
+      .catch(() => setCategories([]));
+
     try {
-      const [b, c] = await Promise.all([
-        axiosInstance.get("/me/business", { headers: { Authorization: `Bearer ${token}` } }),
-        axiosInstance.get("/categories"),
-      ]);
-      setBusiness(b.data);
-      setCategories(c.data);
+      const { data } = await axiosInstance.get("/me/business", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setBusiness(data);
       setNotAssigned(false);
     } catch (error) {
       if (error.response?.status === 404) {
