@@ -73,6 +73,11 @@ async def main():
             n = await conn.fetchval(f'SELECT COUNT(*) FROM "{t}"')
             print(f"  {t:<20} {n} registro(s)")
 
+        cols_biz = [r["column_name"] for r in await conn.fetch(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='businesses'"
+        )]
+
         titulo("Columnas de users")
         cols_users = [r["column_name"] for r in await conn.fetch(
             "SELECT column_name FROM information_schema.columns "
@@ -80,7 +85,7 @@ async def main():
         )]
         print("  " + (", ".join(cols_users) if cols_users else "(la tabla users no existe)"))
 
-        titulo("Estado de la migración B2B")
+        titulo("Migración 001 — enfoque B2B")
         pendientes = []
 
         if "categories" in tablas:
@@ -113,10 +118,6 @@ async def main():
                 print(f"{OK}Tabla {obsoleta} ya no existe")
 
         if "businesses" in tablas:
-            cols_biz = [r["column_name"] for r in await conn.fetch(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_schema='public' AND table_name='businesses'"
-            )]
             if "municipality_id" in cols_biz:
                 print(f"{NO}Columna businesses.municipality_id todavía existe")
                 pendientes.append("eliminar businesses.municipality_id")
@@ -144,15 +145,57 @@ async def main():
             else:
                 print(f"{OK}Ningún usuario tiene más de un negocio")
 
-        titulo("Conclusión")
-        if pendientes:
-            print("  Falta correr la migración. Pendiente:")
-            for p in pendientes:
-                print(f"    - {p}")
-            print("\n  Archivo: backend/sql/migration_001_b2b.sql")
-            print("  Haz un backup en Supabase antes de ejecutarla.")
+        # ---- Migración 002: horarios y amenidades ----
+        titulo("Migración 002 — horarios y amenidades")
+        faltan_002 = []
+
+        if "amenities" in tablas:
+            n = await conn.fetchval("SELECT COUNT(*) FROM amenities")
+            print(f"{OK}Tabla amenities existe ({n} registros)")
+            if n == 0:
+                print(f"{WARN}Está vacía: el catálogo base no se sembró")
         else:
-            print("  El esquema ya está listo. Puedes levantar la API.")
+            print(f"{NO}Tabla amenities NO existe")
+            faltan_002.append("crear la tabla amenities")
+
+        if "businesses" in tablas:
+            for col, desc in (("hours_schedule", "horario por día"),
+                              ("amenities", "amenidades del negocio")):
+                if col in cols_biz:
+                    print(f"{OK}Columna businesses.{col} existe ({desc})")
+                else:
+                    print(f"{NO}Columna businesses.{col} NO existe")
+                    faltan_002.append(f"añadir businesses.{col}")
+
+        # ---- Migración 003: métricas ----
+        titulo("Migración 003 — métricas")
+        faltan_003 = []
+        for tabla in ("stats_site_daily", "stats_business_daily"):
+            if tabla in tablas:
+                n = await conn.fetchval(f"SELECT COUNT(*) FROM {tabla}")
+                print(f"{OK}Tabla {tabla} existe ({n} registros)")
+            else:
+                print(f"{NO}Tabla {tabla} NO existe")
+                faltan_003.append(f"crear {tabla}")
+
+        titulo("Conclusión")
+        algo_falta = False
+        for nombre, archivo, lista in (
+            ("001", "migration_001_b2b.sql", pendientes),
+            ("002", "migration_002_horarios_amenidades.sql", faltan_002),
+            ("003", "migration_003_metricas.sql", faltan_003),
+        ):
+            if lista:
+                algo_falta = True
+                print(f"\n  Falta la migración {nombre} — backend/sql/{archivo}")
+                for x in lista:
+                    print(f"    - {x}")
+
+        if not algo_falta:
+            print("  Las tres migraciones están aplicadas. El esquema está al día.")
+        else:
+            print("\n  Ejecútalas EN ORDEN en el SQL Editor de Supabase.")
+            print("  La 001 borra datos: haz un backup antes. Las 002 y 003 solo agregan.")
     finally:
         await conn.close()
 

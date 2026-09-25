@@ -47,6 +47,7 @@ export const emptySchedule = () =>
   DIAS.map((_, day) => ({
     day,
     closed: day > 4,
+    all_day: false,
     open: day > 4 ? "" : "09:00",
     close: day > 4 ? "" : "18:00",
   }));

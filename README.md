@@ -157,6 +157,49 @@ manipule el frontend, la API solo le devuelve su propio negocio.
 Un dueño **no** puede reasignar su negocio a otra persona ni reactivarlo si el
 admin lo desactivó: esos campos no existen en el modelo `OwnBusinessUpdate`.
 
+## Comprobar qué versión corre
+
+```
+http://localhost:8000/api/
+```
+
+Devuelve la versión, las funciones incluidas y el número de rutas:
+
+```json
+{
+  "version": "2.3.0",
+  "funciones": ["roles", "categorias", "amenidades", "metricas", "compartir"],
+  "rutas": 36
+}
+```
+
+También reporta si faltan migraciones:
+
+```json
+{ "esquema_al_dia": false,
+  "migraciones_pendientes": [
+    { "migracion": "migration_002_horarios_amenidades.sql",
+      "falta": ["tabla amenities", "columna businesses.hours_schedule"] }
+  ] }
+```
+
+Lo mismo se imprime en la consola de uvicorn al arrancar, con un aviso
+imposible de pasar por alto. **Una migración olvidada ya no se manifiesta
+como un error 500 suelto**, que es lo difícil de diagnosticar.
+
+Si el frontend pide algo que el backend no tiene, el panel lo avisa con un
+mensaje explícito en vez de quedarse en blanco. Aun así, conviene verificar
+esto **antes** de depurar cualquier cosa rara: la causa más común de un
+comportamiento inexplicable es que el backend y el frontend vengan de
+entregas distintas.
+
+| Rutas | Versión |
+|-------|---------|
+| 36 | 2.3.0 — métricas y compartir |
+| 32 | horarios y amenidades |
+| 27 | enfoque B2B |
+| 21 | original de Emergent |
+
 ## Puesta en marcha
 
 ### 1. Variables de entorno

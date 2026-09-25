@@ -82,6 +82,11 @@ const BannerFormModal = ({ isOpen, onClose, mode, data, token, onSuccess }) => {
               className="bg-[#0A0A0A] border-[#262626] text-white"
               required
             />
+            <p className="text-xs text-[#525252]">
+              Medida recomendada: <span className="text-[#A3A3A3]">1920 × 768 px</span> (proporción 5:2),
+              en JPG o WebP y menos de 250 KB. El título se dibuja encima, abajo a la izquierda:
+              deja esa zona despejada.
+            </p>
           </div>
 
           <div className="space-y-2">

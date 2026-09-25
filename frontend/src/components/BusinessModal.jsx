@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { MapPin, Phone, Globe, Star, Navigation, Images } from "lucide-react";
+import { urlMapa } from "../lib/social";
+import SocialLinks from "./SocialLinks";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader,
@@ -20,6 +22,7 @@ const BusinessModal = ({ business, isOpen, onClose, TypeIcon, typeLabel, ameniti
   if (!business) return null;
 
   const galeria = (business.images || []).filter((url) => url && !rotas[url]);
+  const mapa = urlMapa(business);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -48,7 +51,21 @@ const BusinessModal = ({ business, isOpen, onClose, TypeIcon, typeLabel, ameniti
 
           {/* Datos de contacto */}
           <div className="grid gap-4">
-            <InfoRow icon={MapPin} label="Dirección" value={business.address} />
+            {/*
+              La dirección lleva a las coordenadas exactas del negocio, no al
+              texto escrito: en el celular abre la app de mapas con el pin ya
+              puesto. Si por lo que sea no hay coordenadas, se muestra plano.
+            */}
+            <InfoRow
+              icon={MapPin}
+              label="Dirección"
+              value={business.address}
+              isLink={Boolean(mapa)}
+              href={mapa || undefined}
+              external
+              hint={mapa ? "Ver en Google Maps" : undefined}
+              testId="direccion-mapa"
+            />
             {business.phone && (
               <InfoRow icon={Phone} label="Teléfono" value={business.phone}
                        isLink href={`tel:${business.phone}`} />
@@ -62,6 +79,9 @@ const BusinessModal = ({ business, isOpen, onClose, TypeIcon, typeLabel, ameniti
                        value={`${business.distance} km desde tu ubicación`} />
             )}
           </div>
+
+          {/* Redes sociales. No se dibuja nada si el negocio no tiene ninguna. */}
+          <SocialLinks business={business} />
 
           {/* Horario día por día */}
           <ScheduleDisplay schedule={business.hours_schedule} fallback={business.hours} />

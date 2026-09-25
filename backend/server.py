@@ -33,7 +33,21 @@ load_dotenv(ROOT_DIR.parent / '.env')
 DATABASE_URL = os.environ['DATABASE_URL']
 db_pool = None
 
-app = FastAPI(title="Qplan.mx API", version="2.0.0")
+# Versión del backend. Súbela en cada entrega: permite verificar de un vistazo
+# —en GET /api/ o en el título de /docs— si el servidor que está corriendo
+# corresponde al frontend desplegado.
+API_VERSION = "2.4.0"
+FUNCIONES = [
+    "roles",         # user / business_owner / admin
+    "categorias",    # catálogo administrable
+    "amenidades",    # catálogo administrable + horarios por día + galería
+    "metricas",      # contadores agregados y reportes
+    "compartir",     # enlaces /lugar/{id}
+    "redes",         # instagram / facebook / whatsapp por negocio
+    "horario24h",    # días marcados como abiertos las 24 horas
+]
+
+app = FastAPI(title="Qplan.mx API", version=API_VERSION)
 api_router = APIRouter(prefix="/api")
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'qplan-secret-key-change-in-production')
@@ -67,6 +81,69 @@ security = HTTPBearer()
 DB_SSL = os.environ.get('DB_SSL', 'require')
 
 
+# Qué necesita cada migración para considerarse aplicada. Se comprueba al
+# arrancar: sin esto, una migración olvidada se manifiesta como un error 500
+# suelto en tiempo de uso, difícil de relacionar con su causa.
+ESQUEMA_REQUERIDO = {
+    "migration_001_b2b.sql": {
+        "tablas": ["categories"],
+        "columnas": [("users", "role")],
+    },
+    "migration_002_horarios_amenidades.sql": {
+        "tablas": ["amenities"],
+        "columnas": [("businesses", "hours_schedule"), ("businesses", "amenities")],
+    },
+    "migration_003_metricas.sql": {
+        "tablas": ["stats_site_daily", "stats_business_daily"],
+        "columnas": [],
+    },
+    "migration_004_redes_sociales.sql": {
+        "tablas": [],
+        "columnas": [("businesses", "instagram"), ("businesses", "facebook"),
+                     ("businesses", "whatsapp")],
+    },
+}
+
+# Se llena al arrancar. Lo expone GET /api/ para poder diagnosticar de un vistazo.
+MIGRACIONES_PENDIENTES = []
+
+
+async def verificar_esquema(conn):
+    """Compara la base contra lo que el código necesita y avisa fuerte si falta algo."""
+    tablas = {r["table_name"] for r in await conn.fetch(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+    )}
+    columnas = {(r["table_name"], r["column_name"]) for r in await conn.fetch(
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = 'public'"
+    )}
+
+    pendientes = []
+    for archivo, requisitos in ESQUEMA_REQUERIDO.items():
+        faltan = [f"tabla {t}" for t in requisitos["tablas"] if t not in tablas]
+        faltan += [f"columna {t}.{c}" for t, c in requisitos["columnas"]
+                   if (t, c) not in columnas]
+        if faltan:
+            pendientes.append({"migracion": archivo, "falta": faltan})
+
+    if pendientes:
+        logging.error("=" * 68)
+        logging.error("LA BASE DE DATOS NO ESTÁ AL DÍA. Faltan migraciones por ejecutar:")
+        for p in pendientes:
+            logging.error("  backend/sql/%s", p["migracion"])
+            for f in p["falta"]:
+                logging.error("      falta %s", f)
+        logging.error("")
+        logging.error("Mientras tanto, algunos endpoints responderán con error 500.")
+        logging.error("Ejecuta las migraciones EN ORDEN en el SQL Editor de Supabase,")
+        logging.error("o corre  python backend/tools/check_db.py  para el detalle.")
+        logging.error("=" * 68)
+    else:
+        logging.info("Esquema al día: las %d migraciones están aplicadas",
+                     len(ESQUEMA_REQUERIDO))
+    return pendientes
+
+
 async def _init_connection(conn):
     """asyncpg entrega JSONB como texto; este códec lo convierte a objetos
     de Python en ambos sentidos, para poder trabajar con hours_schedule."""
@@ -84,6 +161,10 @@ async def startup_db():
     ssl_mode = None if DB_SSL in ('disable', 'false', 'off') else DB_SSL
     db_pool = await asyncpg.create_pool(DATABASE_URL, ssl=ssl_mode, init=_init_connection)
     logging.info("Conectado a PostgreSQL (ssl=%s)", ssl_mode)
+
+    global MIGRACIONES_PENDIENTES
+    async with db_pool.acquire() as conn:
+        MIGRACIONES_PENDIENTES = await verificar_esquema(conn)
 
 
 @app.on_event("shutdown")
@@ -172,9 +253,20 @@ HORA_RE = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
 
 
 class HoursDay(BaseModel):
-    """Horario de un día. day: 0 = lunes ... 6 = domingo."""
+    """
+    Horario de un día. day: 0 = lunes ... 6 = domingo.
+
+    Tres estados posibles, en este orden de prioridad:
+      closed   → cerrado ese día.
+      all_day  → abierto las 24 horas; open y close se ignoran.
+      open/close → rango normal.
+
+    all_day es opcional para no romper los negocios dados de alta antes:
+    si la llave no viene en el JSON guardado, vale False.
+    """
     day: int = Field(..., ge=0, le=6)
     closed: bool = False
+    all_day: bool = False
     open: Optional[str] = None
     close: Optional[str] = None
 
@@ -192,7 +284,8 @@ class HoursDay(BaseModel):
     def validate_rango(cls, v, info):
         # Se permite un cierre anterior a la apertura: es un negocio que
         # cierra de madrugada (22:00 a 02:00), no un error.
-        if not info.data.get('closed') and v and not info.data.get('open'):
+        if (not info.data.get('closed') and not info.data.get('all_day')
+                and v and not info.data.get('open')):
             raise ValueError("Falta la hora de apertura")
         return v
 
@@ -202,16 +295,128 @@ def validate_schedule(schedule: Optional[List[HoursDay]]) -> Optional[list]:
     if schedule is None:
         return None
     vistos = set()
+    dias = []
     for d in schedule:
         if d.day in vistos:
             raise HTTPException(status_code=400, detail=f"El día {DIAS[d.day]} está repetido")
         vistos.add(d.day)
-        if not d.closed and not (d.open and d.close):
+        if not d.closed and not d.all_day and not (d.open and d.close):
             raise HTTPException(
                 status_code=400,
-                detail=f"{DIAS[d.day]}: indica apertura y cierre, o márcalo como cerrado",
+                detail=(f"{DIAS[d.day]}: indica apertura y cierre, "
+                        f"o márcalo como cerrado o abierto 24 horas"),
             )
-    return [d.model_dump() for d in sorted(schedule, key=lambda x: x.day)]
+        # Un día cerrado o de 24 horas no guarda horas sueltas: así la
+        # base nunca contradice a la pantalla.
+        limpio = d.model_dump()
+        if d.closed:
+            limpio['all_day'] = False
+        if limpio['closed'] or limpio['all_day']:
+            limpio['open'] = limpio['close'] = None
+        dias.append(limpio)
+    return sorted(dias, key=lambda x: x['day'])
+
+
+# --------------------------------------------------------------- redes
+#
+# Se guarda el identificador, no la URL: el enlace lo arma el frontend.
+# Así da igual que el negocio te pase "@cafecentral", "cafecentral" o
+# "https://www.instagram.com/cafecentral/?hl=es": los tres terminan
+# guardados igual y el enlace siempre sale bien formado.
+
+LADA_POR_DEFECTO = os.environ.get("DEFAULT_COUNTRY_CODE", "52")  # México
+
+IG_RE = re.compile(r"^[A-Za-z0-9._]{1,30}$")
+FB_RE = re.compile(r"^[A-Za-z0-9._\-]{1,60}$")
+FB_PERFIL_RE = re.compile(r"^profile\.php\?id=\d{5,25}$")
+
+
+def _quitar_dominio(valor: str, dominios: tuple) -> str:
+    """Deja solo lo que va después del dominio, si venía una URL."""
+    v = valor.strip()
+    v = re.sub(r"^https?://", "", v, flags=re.I)
+    v = re.sub(r"^www\.", "", v, flags=re.I)
+    for d in dominios:
+        if v.lower().startswith(d):
+            v = v[len(d):]
+            break
+    return v.lstrip("/")
+
+
+def normalize_instagram(valor: Optional[str]) -> Optional[str]:
+    if not valor or not valor.strip():
+        return None
+    v = _quitar_dominio(valor, ("instagram.com/", "instagr.am/"))
+    v = v.split("?")[0].split("/")[0].lstrip("@").strip()
+    if not v:
+        return None
+    if not IG_RE.match(v):
+        raise HTTPException(
+            status_code=400,
+            detail=("Instagram: usa el nombre de usuario (por ejemplo cafecentral) "
+                    "o el enlace completo del perfil."),
+        )
+    return v
+
+
+def normalize_facebook(valor: Optional[str]) -> Optional[str]:
+    if not valor or not valor.strip():
+        return None
+    v = _quitar_dominio(valor, ("facebook.com/", "fb.com/", "m.facebook.com/"))
+    v = v.rstrip("/")
+    # Las páginas sin nombre personalizado son /profile.php?id=123456
+    if v.lower().startswith("profile.php"):
+        v = v.split("&")[0]
+        if not FB_PERFIL_RE.match(v):
+            raise HTTPException(status_code=400, detail="Facebook: el enlace del perfil no es válido.")
+        return v
+    v = v.split("?")[0].split("/")[0]
+    if not v:
+        return None
+    if not FB_RE.match(v):
+        raise HTTPException(
+            status_code=400,
+            detail=("Facebook: usa el nombre de la página (por ejemplo CafeCentral) "
+                    "o el enlace completo."),
+        )
+    return v
+
+
+def normalize_whatsapp(valor: Optional[str]) -> Optional[str]:
+    """Deja el número en formato internacional, solo dígitos y sin +."""
+    if not valor or not valor.strip():
+        return None
+    v = _quitar_dominio(valor, ("wa.me/", "api.whatsapp.com/send", "whatsapp.com/"))
+    digitos = re.sub(r"\D", "", v)
+    if not digitos:
+        return None
+    # Un número mexicano de 10 dígitos viene sin lada de país: se le pone.
+    if len(digitos) == 10:
+        digitos = LADA_POR_DEFECTO + digitos
+    # 1 + 10 dígitos es el formato viejo de México (521...); WhatsApp ya no
+    # lo usa para números móviles, pero se acepta y se deja tal cual.
+    if not 8 <= len(digitos) <= 15:
+        raise HTTPException(
+            status_code=400,
+            detail=("WhatsApp: escribe el número a 10 dígitos (7771234567) "
+                    "o en formato internacional (+52 777 123 4567)."),
+        )
+    return digitos
+
+
+NORMALIZADORES_RED = {
+    "instagram": normalize_instagram,
+    "facebook": normalize_facebook,
+    "whatsapp": normalize_whatsapp,
+}
+
+
+def normalize_socials(update_data: dict) -> dict:
+    """Aplica el normalizador de cada red a las llaves presentes."""
+    for red, fn in NORMALIZADORES_RED.items():
+        if red in update_data:
+            update_data[red] = fn(update_data[red])
+    return update_data
 
 
 def validate_images(images: Optional[List[str]]) -> Optional[List[str]]:
@@ -256,6 +461,9 @@ class BusinessCreate(BaseModel):
     images: List[str] = []
     amenities: List[str] = []
     website: Optional[str] = None
+    instagram: Optional[str] = None
+    facebook: Optional[str] = None
+    whatsapp: Optional[str] = None
     owner_id: Optional[str] = None
 
 
@@ -274,6 +482,9 @@ class BusinessUpdate(BaseModel):
     images: Optional[List[str]] = None
     amenities: Optional[List[str]] = None
     website: Optional[str] = None
+    instagram: Optional[str] = None
+    facebook: Optional[str] = None
+    whatsapp: Optional[str] = None
     owner_id: Optional[str] = None
 
 
@@ -297,6 +508,9 @@ class OwnBusinessUpdate(BaseModel):
     images: Optional[List[str]] = None
     amenities: Optional[List[str]] = None
     website: Optional[str] = None
+    instagram: Optional[str] = None
+    facebook: Optional[str] = None
+    whatsapp: Optional[str] = None
 
 
 TIPOS_EVENTO = ("pageview", "business_view")
@@ -389,6 +603,12 @@ def serialize_business(row) -> dict:
     b['id'] = str(b['id'])
     b['owner_id'] = str(b['owner_id']) if b.get('owner_id') else None
     b['created_at'] = b['created_at'].isoformat()
+    # La columna rating es REAL (float de 4 bytes): al ensancharla a float de
+    # 8 bytes para el JSON, 4.6 se convierte en 4.599999904632568 y así se
+    # imprimía en las tarjetas. Se redondea aquí, que es por donde pasan
+    # todas las respuestas que incluyen un negocio.
+    if b.get('rating') is not None:
+        b['rating'] = round(float(b['rating']), 1)
     return b
 
 
@@ -551,7 +771,19 @@ async def get_me(current_user=Depends(get_current_user)):
 
 @api_router.get("/")
 async def root():
-    return {"message": "Qplan.mx API - Descubre lugares cerca de ti"}
+    """
+    Identificación del backend. Sirve para comprobar rápido que el servidor
+    que responde es el que corresponde al frontend.
+    """
+    return {
+        "message": "Qplan.mx API - Descubre lugares cerca de ti",
+        "version": API_VERSION,
+        "funciones": FUNCIONES,
+        "rutas": len([r for r in app.routes
+                      if hasattr(r, "methods") and r.path.startswith("/api")]),
+        "esquema_al_dia": not MIGRACIONES_PENDIENTES,
+        "migraciones_pendientes": MIGRACIONES_PENDIENTES,
+    }
 
 
 @api_router.get("/categories")
@@ -889,6 +1121,7 @@ async def update_my_business(payload: OwnBusinessUpdate, current_user=Depends(re
             update_data['images'] = validate_images(update_data['images'])
         if 'amenities' in update_data:
             update_data['amenities'] = await validate_amenities(conn, update_data['amenities'])
+        normalize_socials(update_data)
 
         sets, values = build_update_clause(update_data)
         row = await conn.fetchrow(
@@ -940,15 +1173,21 @@ async def admin_create_business(business: BusinessCreate, admin=Depends(require_
 
         row = await conn.fetchrow(
             """INSERT INTO businesses (name, type, description, logo, address, phone, hours,
-               hours_schedule, latitude, longitude, rating, images, amenities, website, owner_id)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *""",
+               hours_schedule, latitude, longitude, rating, images, amenities, website,
+               instagram, facebook, whatsapp, owner_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+               RETURNING *""",
             business.name, business.type, business.description, business.logo,
             business.address, business.phone, business.hours,
             validate_schedule(business.hours_schedule),
             business.latitude, business.longitude, business.rating,
             validate_images(business.images) or [],
             await validate_amenities(conn, business.amenities) or [],
-            business.website, owner_uuid,
+            business.website,
+            normalize_instagram(business.instagram),
+            normalize_facebook(business.facebook),
+            normalize_whatsapp(business.whatsapp),
+            owner_uuid,
         )
 
         # Asignar un negocio promueve al usuario a dueño.
@@ -980,6 +1219,7 @@ async def admin_update_business(
             update_data['images'] = validate_images(update_data['images'])
         if 'amenities' in update_data:
             update_data['amenities'] = await validate_amenities(conn, update_data['amenities'])
+        normalize_socials(update_data)
 
         new_owner = None
         if 'owner_id' in update_data:

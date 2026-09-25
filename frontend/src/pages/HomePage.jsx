@@ -301,12 +301,18 @@ const HomePage = () => {
                         href={banner.link || undefined}
                         target={banner.link ? "_blank" : undefined}
                         rel="noopener noreferrer"
-                        className="block relative h-48 sm:h-64 lg:h-80 rounded-3xl overflow-hidden"
+                        className="block relative aspect-[5/2] rounded-3xl overflow-hidden bg-[#0A0A0A]"
                       >
-                        <img src={banner.image} alt={banner.title} className="w-full h-full object-cover" />
+                        {/*
+                         * object-contain, no object-cover: con una sola
+                         * proporción (5:2) la imagen entra completa y no se
+                         * recorta en ningún tamaño de pantalla. La medida
+                         * recomendada es 1920 x 768 px.
+                         */}
+                        <img src={banner.image} alt={banner.title} className="w-full h-full object-contain" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                        <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
-                          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">
+                        <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-8">
+                          <h2 className="text-base sm:text-2xl lg:text-3xl font-bold text-white">
                             {banner.title}
                           </h2>
                         </div>
@@ -318,7 +324,7 @@ const HomePage = () => {
                 <CarouselNext className="right-4 bg-black/50 border-white/20 text-white hover:bg-black/70" />
               </Carousel>
             ) : (
-              <div className="h-48 sm:h-64 lg:h-80 rounded-3xl bg-[#0A0A0A] animate-pulse" />
+              <div className="aspect-[5/2] rounded-3xl bg-[#0A0A0A] animate-pulse" />
             )}
           </section>
 

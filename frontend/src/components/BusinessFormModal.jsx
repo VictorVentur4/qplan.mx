@@ -25,6 +25,7 @@ const EMPTY = {
   name: "", type: "", description: "", logo: "", address: "",
   phone: "", latitude: 19.4326, longitude: -99.1332,
   rating: 4.5, images: [], amenities: [], website: "", owner_id: null,
+  instagram: "", facebook: "", whatsapp: "",
   hours_schedule: emptySchedule(),
 };
 
@@ -33,7 +34,7 @@ const normalizeSchedule = (schedule) => {
   if (!Array.isArray(schedule) || schedule.length === 0) return emptySchedule();
   const porDia = new Map(schedule.map((d) => [d.day, d]));
   return DIAS.map((_, day) =>
-    porDia.get(day) || { day, closed: true, open: "", close: "" }
+    porDia.get(day) || { day, closed: true, all_day: false, open: "", close: "" }
   );
 };
 
@@ -67,6 +68,9 @@ const BusinessFormModal = ({
         images: data.images || [],
         amenities: data.amenities || [],
         website: data.website || "",
+        instagram: data.instagram || "",
+        facebook: data.facebook || "",
+        whatsapp: data.whatsapp || "",
         owner_id: data.owner_id || null,
         hours_schedule: normalizeSchedule(data.hours_schedule),
       });
@@ -178,6 +182,44 @@ const BusinessFormModal = ({
             <Label className="text-[#A3A3A3]">Teléfono</Label>
             <Input value={formData.phone} onChange={set("phone")}
                    className="bg-[#0A0A0A] border-[#262626] text-white" />
+          </div>
+
+          {/*
+            Redes sociales. Se puede pegar el enlace completo o solo el
+            usuario: el backend lo normaliza. La que se deje vacía
+            simplemente no se muestra en la ficha del negocio.
+          */}
+          <div className="space-y-2">
+            <Label className="text-[#A3A3A3]">Redes sociales (opcionales)</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Input
+                  value={formData.whatsapp} onChange={set("whatsapp")}
+                  placeholder="WhatsApp"
+                  aria-label="WhatsApp"
+                  className="bg-[#0A0A0A] border-[#262626] text-white"
+                />
+                <p className="text-xs text-[#525252]">777 123 4567</p>
+              </div>
+              <div className="space-y-1">
+                <Input
+                  value={formData.instagram} onChange={set("instagram")}
+                  placeholder="Instagram"
+                  aria-label="Instagram"
+                  className="bg-[#0A0A0A] border-[#262626] text-white"
+                />
+                <p className="text-xs text-[#525252]">@usuario o el enlace</p>
+              </div>
+              <div className="space-y-1">
+                <Input
+                  value={formData.facebook} onChange={set("facebook")}
+                  placeholder="Facebook"
+                  aria-label="Facebook"
+                  className="bg-[#0A0A0A] border-[#262626] text-white"
+                />
+                <p className="text-xs text-[#525252]">Página o el enlace</p>
+              </div>
+            </div>
           </div>
 
           <ScheduleEditor
