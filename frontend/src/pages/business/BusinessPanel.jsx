@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Loader2, ArrowLeft, LogOut, Pencil, Store, MapPin, Phone,
-  Clock, Globe, Star, AlertCircle,
+  Globe, Star, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,10 @@ import axiosInstance from "../../api/axios";
 import { useAuth } from "../../context/AuthContext";
 import BusinessFormModal from "../../components/BusinessFormModal";
 import InfoRow from "../../components/InfoRow";
+import ScheduleDisplay from "../../components/ScheduleDisplay";
+import SocialLinks from "../../components/SocialLinks";
 import { getIcon } from "../../constants/businessTypes";
+import { urlMapa } from "../../lib/social";
 
 /**
  * Panel del dueño de negocio: ve y edita únicamente su propia ficha.
@@ -30,13 +33,19 @@ const BusinessPanel = () => {
 
   const load = useCallback(async () => {
     setIsLoading(true);
+
+    // Las categorías son accesorias: solo dan la etiqueta y el icono. Si
+    // fallan, el dueño debe poder ver y editar su negocio igual, así que se
+    // piden por separado y su error no interrumpe nada.
+    axiosInstance.get("/categories")
+      .then(({ data }) => setCategories(data))
+      .catch(() => setCategories([]));
+
     try {
-      const [b, c] = await Promise.all([
-        axiosInstance.get("/me/business", { headers: { Authorization: `Bearer ${token}` } }),
-        axiosInstance.get("/categories"),
-      ]);
-      setBusiness(b.data);
-      setCategories(c.data);
+      const { data } = await axiosInstance.get("/me/business", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setBusiness(data);
       setNotAssigned(false);
     } catch (error) {
       if (error.response?.status === 404) {
@@ -65,6 +74,8 @@ const BusinessPanel = () => {
 
   const categoryLabel =
     categories.find((c) => c.slug === business?.type)?.label || business?.type;
+
+  const mapa = business ? urlMapa(business) : null;
 
   return (
     <div className="min-h-screen bg-[#050505]">
@@ -160,14 +171,22 @@ const BusinessPanel = () => {
                   <InfoRow icon={Phone} label="Teléfono" value={business.phone}
                            isLink href={`tel:${business.phone}`} />
                 )}
-                {business.hours && <InfoRow icon={Clock} label="Horario" value={business.hours} />}
                 {business.website && (
                   <InfoRow icon={Globe} label="Sitio web" value={business.website}
                            isLink external href={business.website} />
                 )}
                 <InfoRow icon={Star} label="Calificación" value={`${business.rating} / 5`} />
-                <InfoRow icon={MapPin} label="Coordenadas"
-                         value={`${business.latitude}, ${business.longitude}`} />
+                <InfoRow
+                  icon={MapPin} label="Coordenadas"
+                  value={`${business.latitude}, ${business.longitude}`}
+                  isLink={Boolean(mapa)} href={mapa || undefined} external
+                  hint={mapa ? "Así es como lo ve el usuario en el mapa" : undefined}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <ScheduleDisplay schedule={business.hours_schedule} fallback={business.hours} />
+                <SocialLinks business={business} />
               </div>
 
               <p className="text-xs text-[#525252] mt-6">
