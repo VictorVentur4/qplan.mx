@@ -1,0 +1,15 @@
+# Normaliza los finales de línea: en el repositorio siempre LF.
+# Sin esto, un viaje por Windows convierte archivos enteros a CRLF y los
+# diffs salen con el archivo completo modificado aunque no se tocó nada.
+* text=auto eol=lf
+
+# Binarios: que git no los toque.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary
