@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { MapPin, Navigation, Loader2, LogOut, Settings, Store, LayoutGrid, QrCode } from "lucide-react";
+import { MapPin, Navigation, Loader2, LogOut, Settings, Store, LayoutGrid, QrCode, Ruler } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Carousel, CarouselContent, CarouselItem,
@@ -20,8 +20,10 @@ import LocationPrompt from "../components/LocationPrompt";
 import { getIcon, getIconForType, getLabelForType, ALL_CATEGORIES } from "../constants/businessTypes";
 import { getQrCoords, requestBrowserLocation } from "../lib/location";
 import { trackPageview, trackBusinessView } from "../lib/analytics";
-
-const SEARCH_RADIUS_KM = 50;
+import {
+  RADIOS_KM, RADIO_POR_DEFECTO, leerRadio, guardarRadio,
+  siguienteRadio, etiquetaRadio,
+} from "../lib/radio";
 
 /** De dónde salió la ubicación que estamos usando. */
 const FUENTE = {
@@ -37,6 +39,8 @@ const HomePage = () => {
   const [categories, setCategories] = useState([]);
   const [amenities, setAmenities] = useState([]);
   const [selectedType, setSelectedType] = useState(ALL_CATEGORIES);
+  // Se lee del almacenamiento una sola vez, al montar.
+  const [radioKm, setRadioKm] = useState(() => leerRadio());
   const [selectedBusiness, setSelectedBusiness] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
@@ -185,7 +189,7 @@ const HomePage = () => {
       const params = new URLSearchParams({
         lat: userLocation.lat.toString(),
         lng: userLocation.lng.toString(),
-        radius: String(SEARCH_RADIUS_KM),
+        radius: String(radioKm),
       });
       // Sin "type" el backend devuelve todas las categorías.
       if (selectedType !== ALL_CATEGORIES) params.set("type", selectedType);
@@ -197,7 +201,7 @@ const HomePage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedType, userLocation]);
+  }, [selectedType, userLocation, radioKm]);
 
   useEffect(() => {
     fetchCategories();
@@ -220,9 +224,21 @@ const HomePage = () => {
    */
   const hayUbicacion = Boolean(userLocation);
 
-  const emptyMessage = selectedType === ALL_CATEGORIES
-    ? "No encontramos negocios en tu área"
-    : `No encontramos ${getLabelForType(categories, selectedType).toLowerCase()} en tu área`;
+  /* Cambiar el radio recarga el listado (el efecto depende de radioKm) y
+     además se recuerda para la próxima visita. */
+  const cambiarRadio = (km) => {
+    setRadioKm(km);
+    guardarRadio(km);
+  };
+
+  /* Si no hay resultados y todavía se puede ampliar, se le ofrece el
+     siguiente salto en vez de dejarlo en un callejón sin salida. */
+  const radioMasAmplio = siguienteRadio(radioKm);
+
+  const queBuscabamos = selectedType === ALL_CATEGORIES
+    ? "negocios"
+    : getLabelForType(categories, selectedType).toLowerCase();
+  const emptyMessage = `No encontramos ${queBuscabamos} a menos de ${radioKm} km de ti.`;
 
   return (
     <div className="min-h-screen bg-[#050505]">
@@ -301,12 +317,18 @@ const HomePage = () => {
                         href={banner.link || undefined}
                         target={banner.link ? "_blank" : undefined}
                         rel="noopener noreferrer"
-                        className="block relative h-48 sm:h-64 lg:h-80 rounded-3xl overflow-hidden"
+                        className="block relative aspect-[5/2] rounded-3xl overflow-hidden bg-[#0A0A0A]"
                       >
-                        <img src={banner.image} alt={banner.title} className="w-full h-full object-cover" />
+                        {/*
+                         * object-contain, no object-cover: con una sola
+                         * proporción (5:2) la imagen entra completa y no se
+                         * recorta en ningún tamaño de pantalla. La medida
+                         * recomendada es 1920 x 768 px.
+                         */}
+                        <img src={banner.image} alt={banner.title} className="w-full h-full object-contain" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                        <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
-                          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">
+                        <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-8">
+                          <h2 className="text-base sm:text-2xl lg:text-3xl font-bold text-white">
                             {banner.title}
                           </h2>
                         </div>
@@ -318,7 +340,7 @@ const HomePage = () => {
                 <CarouselNext className="right-4 bg-black/50 border-white/20 text-white hover:bg-black/70" />
               </Carousel>
             ) : (
-              <div className="h-48 sm:h-64 lg:h-80 rounded-3xl bg-[#0A0A0A] animate-pulse" />
+              <div className="aspect-[5/2] rounded-3xl bg-[#0A0A0A] animate-pulse" />
             )}
           </section>
 
@@ -348,9 +370,12 @@ const HomePage = () => {
             <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
               <div>
                 <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">Negocios cercanos</h2>
-                <p className="text-[#A3A3A3] text-sm">Descubre los mejores lugares cerca de ti</p>
+                <p className="text-[#A3A3A3] text-sm">
+                  Descubre los mejores lugares a {radioKm} km de ti
+                </p>
               </div>
 
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
               <Select value={selectedType} onValueChange={setSelectedType}>
                 <SelectTrigger className="w-full sm:w-[220px] bg-[#0A0A0A] border-[#262626] text-white rounded-xl h-12">
                   <SelectValue placeholder="Categoría" />
@@ -382,6 +407,44 @@ const HomePage = () => {
                   })}
                 </SelectContent>
               </Select>
+
+              <Select
+                value={String(radioKm)}
+                onValueChange={(v) => cambiarRadio(Number(v))}
+              >
+                <SelectTrigger
+                  aria-label="Distancia de búsqueda"
+                  data-testid="selector-radio"
+                  className="w-full sm:w-[190px] bg-[#0A0A0A] border-[#262626] text-white rounded-xl h-12"
+                >
+                  {/*
+                    Se le pasa el texto explícito: si se deja vacío, Radix
+                    repinta dentro del recuadro TODO el contenido de la opción
+                    elegida —incluida la etiquetita de "por defecto"— y se corta.
+                  */}
+                  <SelectValue>{etiquetaRadio(radioKm)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent className="bg-[#0A0A0A] border-[#262626]">
+                  {RADIOS_KM.map((km) => (
+                    <SelectItem
+                      key={km}
+                      value={String(km)}
+                      className="text-white hover:bg-[#171717] focus:bg-[#171717] cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Ruler className="w-4 h-4 text-[#CCFF00]" />
+                        {etiquetaRadio(km)}
+                        {km === RADIO_POR_DEFECTO && (
+                          <span className="text-[10px] text-[#525252] uppercase tracking-wide">
+                            por defecto
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              </div>
             </div>
           </section>
           )}
@@ -417,12 +480,23 @@ const HomePage = () => {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-20">
+              <div className="text-center py-20" data-testid="sin-resultados">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#171717] flex items-center justify-center">
                   <MapPin className="w-8 h-8 text-[#A3A3A3]" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">No hay negocios cerca</h3>
                 <p className="text-[#A3A3A3] text-sm">{emptyMessage}</p>
+
+                {radioMasAmplio && (
+                  <Button
+                    onClick={() => cambiarRadio(radioMasAmplio)}
+                    data-testid="ampliar-radio"
+                    className="mt-5 bg-[#CCFF00] text-black font-bold rounded-full hover:bg-[#B3E600]"
+                  >
+                    <Ruler className="w-4 h-4 mr-2" />
+                    Buscar hasta {radioMasAmplio} km
+                  </Button>
+                )}
               </div>
             )}
           </section>

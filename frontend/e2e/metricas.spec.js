@@ -42,8 +42,10 @@ const visitas = async (token, dias=30) => {
   }
 
   console.log('\n── 3. EL QR SE ATRIBUYE ──');
+  // Se guarda fuera del bloque: la pantalla de métricas debe listar
+  // justamente este código más abajo.
+  const etiqueta = 'prueba-' + Math.random().toString(36).slice(2,8);
   {
-    const etiqueta = 'prueba-' + Math.random().toString(36).slice(2,8);
     const ctx = await b.newContext({permissions:['geolocation'], geolocation:{latitude:18.92,longitude:-99.23}});
     const p = await ctx.newPage();
     await p.goto(`${BASE}/?c=18.92,-99.23&qr=${etiqueta}`,{waitUntil:'networkidle'});
@@ -92,7 +94,9 @@ const visitas = async (token, dias=30) => {
     ok('dibuja la gráfica', await p.locator('svg[role="img"]').count() >= 1);
     ok('lista los negocios más vistos', t.includes('Negocios más vistos'));
     ok('muestra la posición promedio', t.includes('Posición promedio'));
-    ok('lista el origen de las visitas', t.includes('hotel-centro-01'));
+    // Se busca el código generado en el paso 3, no uno fijo: así la prueba
+    // no depende de qué datos tenga sembrados la base.
+    ok('lista el origen de las visitas', t.includes(etiqueta), etiqueta);
     ok('advierte del sesgo por posición', t.includes('ganando por salir primero'));
 
     console.log('\n── 6. LA GRÁFICA TIENE VISTA DE TABLA ──');
