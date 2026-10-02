@@ -58,9 +58,9 @@ const CONTENIDO = {
       },
     ],
     contactos: [
-      { icon: Mail, label: "Correo", valor: "hola@qplan.mx", href: "mailto:hola@qplan.mx" },
-      { icon: Phone, label: "Teléfono", valor: "+52 55 0000 0000", href: "tel:+525500000000" },
-      { icon: MessageCircle, label: "WhatsApp", valor: "+52 55 0000 0000", href: "https://wa.me/525500000000" },
+      { icon: Mail, label: "Correo", valor: "contacto@qplan.mx", href: "mailto:contacto@qplan.mx" },
+      { icon: Phone, label: "Teléfono", valor: "+52 22 2484 0292", href: "tel:+522224840292" },
+      { icon: MessageCircle, label: "WhatsApp", valor: "+52 22 2484 0292", href: "https://wa.me/522224840292" },
     ],
   },
 };

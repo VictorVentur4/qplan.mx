@@ -18,6 +18,13 @@ async function goto(page, path) {
   }
 }
 
+async function ampliarAlMaximo(page) {
+  await page.locator('[data-testid="selector-radio"]').click();
+  await page.waitForTimeout(500);
+  await page.locator('[role="option"]', { hasText: /^20 km/ }).first().click();
+  await page.waitForTimeout(2000);
+}
+
 async function abrirNegocio(page, nombre) {
   await page.keyboard.press('Escape').catch(() => {});
   await page.waitForTimeout(300);
@@ -52,6 +59,10 @@ async function abrirNegocio(page, nombre) {
   await goto(page, '/');
   await page.waitForTimeout(2500);
 
+  // El radio por defecto es 5 km y esta suite necesita negocios que están
+  // más lejos, así que se abre al máximo antes de empezar.
+  await ampliarAlMaximo(page);
+
   console.log('\n── 1. REDES SOCIALES EN EL DETALLE ──');
   await abrirNegocio(page, 'Cafe Central');
 
@@ -77,8 +88,16 @@ async function abrirNegocio(page, nombre) {
   const dir = page.locator('[data-testid="direccion-mapa"] a');
   const hrefMapa = await dir.getAttribute('href');
   ok('la dirección es un enlace', Boolean(hrefMapa), hrefMapa || '(sin enlace)');
+  // Las coordenadas se toman de la API, no de un literal: así la prueba no
+  // se rompe cada vez que cambian los datos sembrados.
+  const real = await page.evaluate(async () => {
+    const r = await fetch('http://localhost:8000/api/businesses?lat=18.92&lng=-99.23&radius=20');
+    const b = (await r.json()).find(x => x.name === 'Cafe Central');
+    return b ? `${b.latitude},${b.longitude}` : null;
+  });
   ok('el enlace lleva las coordenadas exactas del negocio',
-     hrefMapa === 'https://www.google.com/maps/search/?api=1&query=18.9215,-99.234', hrefMapa);
+     hrefMapa === `https://www.google.com/maps/search/?api=1&query=${real}`,
+     `${hrefMapa}  (esperado ${real})`);
   ok('avisa a dónde va',
      (await page.textContent('[data-testid="direccion-mapa"]')).includes('Ver en Google Maps'));
 

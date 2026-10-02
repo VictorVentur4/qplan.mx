@@ -36,7 +36,7 @@ db_pool = None
 # Versión del backend. Súbela en cada entrega: permite verificar de un vistazo
 # —en GET /api/ o en el título de /docs— si el servidor que está corriendo
 # corresponde al frontend desplegado.
-API_VERSION = "2.4.0"
+API_VERSION = "2.5.0"
 FUNCIONES = [
     "roles",         # user / business_owner / admin
     "categorias",    # catálogo administrable
@@ -45,6 +45,7 @@ FUNCIONES = [
     "compartir",     # enlaces /lugar/{id}
     "redes",         # instagram / facebook / whatsapp por negocio
     "horario24h",    # días marcados como abiertos las 24 horas
+    "radio",         # el usuario elige la distancia de búsqueda
 ]
 
 app = FastAPI(title="Qplan.mx API", version=API_VERSION)
@@ -248,6 +249,19 @@ class CategoryUpdate(BaseModel):
 
 
 MAX_IMAGES = 5
+
+# Radio de búsqueda de negocios cercanos, en kilómetros.
+#
+# El frontend ofrece una lista cerrada de opciones (1, 5, 10, 15 y 20); aquí
+# solo se fija el valor por defecto y el techo. El backend no exige que el
+# radio sea uno de esos cinco valores: cualquiera entre 0 y el máximo es
+# válido, de modo que cambiar las opciones de la pantalla no obliga a tocar
+# la API. Lo que sí impone el backend es el tope, que es una decisión de
+# costo: el filtro por distancia se calcula en Python sobre todas las filas
+# activas, así que un radio abierto se vuelve caro conforme crezca el padrón.
+RADIO_POR_DEFECTO = float(os.environ.get("SEARCH_RADIUS_DEFAULT_KM", "5"))
+RADIO_MAXIMO = float(os.environ.get("SEARCH_RADIUS_MAX_KM", "20"))
+
 DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 HORA_RE = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
 
@@ -783,6 +797,7 @@ async def root():
                       if hasattr(r, "methods") and r.path.startswith("/api")]),
         "esquema_al_dia": not MIGRACIONES_PENDIENTES,
         "migraciones_pendientes": MIGRACIONES_PENDIENTES,
+        "radio_km": {"por_defecto": RADIO_POR_DEFECTO, "maximo": RADIO_MAXIMO},
     }
 
 
@@ -811,7 +826,12 @@ async def get_businesses(
     type: Optional[str] = Query(None, description="Slug de categoría. Omitir para traer todas."),
     lat: Optional[float] = Query(None),
     lng: Optional[float] = Query(None),
-    radius: float = Query(50.0),
+    radius: float = Query(
+        RADIO_POR_DEFECTO,
+        gt=0,
+        description=f"Radio de búsqueda en km. Por defecto {RADIO_POR_DEFECTO}, "
+                    f"se recorta a {RADIO_MAXIMO} como máximo.",
+    ),
 ):
     query = "SELECT * FROM businesses WHERE is_active = TRUE"
     params = []
@@ -825,9 +845,14 @@ async def get_businesses(
     businesses = [serialize_business(r) for r in rows]
 
     if lat is not None and lng is not None:
+        # Se recorta en vez de rechazar. Si un navegador con la versión vieja
+        # del frontend en caché pide 50 km, devolverle un 422 le dejaría la
+        # pantalla vacía sin explicación; recortando ve negocios, solo que
+        # hasta el tope. El tope sí se respeta siempre.
+        radio = min(radius, RADIO_MAXIMO)
         for b in businesses:
             b['distance'] = round(calculate_distance(lat, lng, b['latitude'], b['longitude']), 2)
-        businesses = [b for b in businesses if b['distance'] <= radius]
+        businesses = [b for b in businesses if b['distance'] <= radio]
         businesses.sort(key=lambda x: x['distance'])
     else:
         businesses.sort(key=lambda x: x['name'])
