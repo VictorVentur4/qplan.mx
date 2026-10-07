@@ -185,3 +185,46 @@ h1, h2, h3, h4, h5, h6 {
         display: contents !important;
     }
 }
+
+/* ---------------------------------------------------------------
+   Mapa (Leaflet)
+
+   El contenedor de Leaflet trae un gris claro de fábrica que, sobre
+   el tema oscuro, se ve como un hueco blanco mientras cargan los
+   mosaicos o si la red falla. Se iguala al color de las tarjetas.
+
+   Lleva !important porque leaflet.css se importa desde el componente y
+   el empaquetador lo coloca DESPUÉS de esta hoja: con la misma
+   especificidad, gana el que va al final.
+   --------------------------------------------------------------- */
+.leaflet-container {
+    background: #0A0A0A !important;
+    font-family: 'Outfit', sans-serif;
+}
+
+/* Mismo motivo que arriba: leaflet.css se carga después. */
+.leaflet-control-zoom a {
+    background: #171717 !important;
+    color: #fff !important;
+    border-color: #262626 !important;
+}
+
+.leaflet-control-zoom a:hover {
+    background: #262626 !important;
+    color: #CCFF00 !important;
+}
+
+.leaflet-bar {
+    border: 1px solid #262626 !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .5) !important;
+}
+
+.leaflet-control-attribution {
+    background: rgba(10, 10, 10, .82) !important;
+    color: #737373 !important;
+    font-size: 10px;
+}
+
+.leaflet-control-attribution a {
+    color: #A3A3A3 !important;
+}

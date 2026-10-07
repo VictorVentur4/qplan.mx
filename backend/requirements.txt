@@ -9,6 +9,8 @@ pyjwt>=2.10.1
 passlib>=1.7.4
 bcrypt==4.1.3
 tzdata>=2024.2
+httpx>=0.27.0            # reenvío de imágenes a la API externa de subidas
+python-multipart>=0.0.9  # requerido por FastAPI para recibir archivos
 
 # --- Dev / calidad de código (opcional) ---
 pytest>=8.0.0

@@ -13,7 +13,37 @@ const ok = (n, c, extra = '') => {
   console.log(`${c ? '  ✓' : '  ✗'} ${n}${extra ? ' — ' + extra : ''}`);
 };
 
-const ESPERADO = { 1: 1, 5: 3, 10: 4, 15: 5, 20: 6 };
+/*
+ * Se verifica POR NOMBRE, no por cantidad de tarjetas: si otra suite deja
+ * negocios sembrados cerca, un conteo exacto falla aunque el filtro esté
+ * perfecto. Lo que importa es que entre quien debe y quede fuera quien no.
+ *
+ * Distancias sembradas: Cafe Central 0.4, Tacos El Paso 1.8,
+ * Panadería La Espiga 3.6, Farmacia San Rafael 7.2, Hotel Jardín Real 12.4,
+ * Gasolinera Del Valle 17.5, Balneario Las Huertas 24.
+ */
+const ESPERADO = {
+  1:  { dentro: ['Cafe Central'],
+        fuera:  ['Tacos El Paso', 'Farmacia San Rafael', 'Balneario Las Huertas'] },
+  5:  { dentro: ['Cafe Central', 'Tacos El Paso', 'Panadería La Espiga'],
+        fuera:  ['Farmacia San Rafael', 'Hotel Jardín Real', 'Balneario Las Huertas'] },
+  10: { dentro: ['Cafe Central', 'Panadería La Espiga', 'Farmacia San Rafael'],
+        fuera:  ['Hotel Jardín Real', 'Gasolinera Del Valle', 'Balneario Las Huertas'] },
+  15: { dentro: ['Farmacia San Rafael', 'Hotel Jardín Real'],
+        fuera:  ['Gasolinera Del Valle', 'Balneario Las Huertas'] },
+  20: { dentro: ['Hotel Jardín Real', 'Gasolinera Del Valle'],
+        fuera:  ['Balneario Las Huertas'] },
+};
+
+/** Nombres de los negocios listados en este momento. */
+const listados = async (p) => p.locator('h3.text-lg.font-bold').allTextContents();
+
+const revisar = (nombres, km) => {
+  const { dentro, fuera } = ESPERADO[km];
+  const faltan = dentro.filter(n => !nombres.includes(n));
+  const sobran = fuera.filter(n => nombres.includes(n));
+  return { bien: !faltan.length && !sobran.length, faltan, sobran };
+};
 
 const tarjetas = (p) => p.locator('h3.text-lg.font-bold').count();
 
@@ -53,16 +83,20 @@ async function elegirRadio(p, km) {
   ok('el selector existe', await page.locator('[data-testid="selector-radio"]').count() > 0);
   const inicial = await page.textContent('[data-testid="selector-radio"]');
   ok('viene preseleccionado en 5 km', inicial.includes('5 km'), inicial.trim());
-  ok('se listan los 3 negocios que caben en 5 km',
-     await tarjetas(page) === ESPERADO[5], `${await tarjetas(page)} tarjetas`);
+  {
+    const r = revisar(await listados(page), 5);
+    ok('a 5 km entran los cercanos y quedan fuera los lejanos', r.bien,
+       r.bien ? '' : `faltan: ${r.faltan} | sobran: ${r.sobran}`);
+  }
   ok('el subtítulo dice la distancia',
      (await page.textContent('body')).includes('a 5 km de ti'));
 
   console.log('\n── 2. CADA OPCIÓN FILTRA ──');
   for (const km of [1, 10, 15, 20]) {
     await elegirRadio(page, km);
-    const n = await tarjetas(page);
-    ok(`${km} km → ${ESPERADO[km]} negocios`, n === ESPERADO[km], `salieron ${n}`);
+    const r = revisar(await listados(page), km);
+    ok(`${km} km filtra correctamente`, r.bien,
+       r.bien ? '' : `faltan: ${r.faltan} | sobran: ${r.sobran}`);
   }
 
   console.log('\n── 3. EL DE 24 KM NUNCA SALE ──');
@@ -75,7 +109,7 @@ async function elegirRadio(p, km) {
   await page.waitForTimeout(2800);
   const tras = await page.textContent('[data-testid="selector-radio"]');
   ok('tras recargar sigue en 10 km', tras.includes('10 km'), tras.trim());
-  ok('y muestra los negocios de 10 km', await tarjetas(page) === ESPERADO[10]);
+  ok('y muestra los negocios de 10 km', revisar(await listados(page), 10).bien);
 
   console.log('\n── 5. SIN RESULTADOS OFRECE AMPLIAR ──');
   // Farmacias: la única está a 7.2 km, así que a 1 km no hay ninguna.

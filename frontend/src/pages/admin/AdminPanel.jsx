@@ -30,6 +30,7 @@ import BusinessFormModal from "../../components/BusinessFormModal";
 import BannerFormModal from "../../components/BannerFormModal";
 import CatalogFormModal from "../../components/CatalogFormModal";
 import MetricsTab from "../../components/MetricsTab";
+import UploadSettings from "../../components/UploadSettings";
 import {
   getIcon, getAmenityIcon, ICON_NAMES, AMENITY_ICON_NAMES, ALL_CATEGORIES,
 } from "../../constants/businessTypes";
@@ -255,6 +256,9 @@ const AdminPanel = () => {
               </TabsTrigger>
               <TabsTrigger value="banners" className="data-[state=active]:bg-[#CCFF00] data-[state=active]:text-black">
                 Banners
+              </TabsTrigger>
+              <TabsTrigger value="ajustes" className="data-[state=active]:bg-[#CCFF00] data-[state=active]:text-black">
+                Ajustes
               </TabsTrigger>
               <TabsTrigger value="usuarios" className="data-[state=active]:bg-[#CCFF00] data-[state=active]:text-black">
                 Usuarios
@@ -588,6 +592,9 @@ const AdminPanel = () => {
                   </TableBody>
                 </Table>
               </div>
+            </TabsContent>
+            <TabsContent value="ajustes">
+              <UploadSettings token={token} />
             </TabsContent>
           </Tabs>
         </main>

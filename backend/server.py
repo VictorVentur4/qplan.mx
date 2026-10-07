@@ -9,7 +9,8 @@ banners publicitarios y tres roles de usuario:
   - admin          : dueño de la plataforma, administra todo
 """
 
-from fastapi import FastAPI, APIRouter, Query, HTTPException, Depends, Response
+from fastapi import (FastAPI, APIRouter, Query, HTTPException, Depends, Response,
+                     UploadFile, File)
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -27,6 +28,11 @@ import jwt
 from passlib.context import CryptContext
 import re
 
+try:                       # uvicorn backend.server:app
+    from . import uploads as subidas
+except ImportError:        # ejecutado directamente desde backend/
+    import uploads as subidas
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR.parent / '.env')
 
@@ -36,7 +42,7 @@ db_pool = None
 # Versión del backend. Súbela en cada entrega: permite verificar de un vistazo
 # —en GET /api/ o en el título de /docs— si el servidor que está corriendo
 # corresponde al frontend desplegado.
-API_VERSION = "2.5.0"
+API_VERSION = "2.6.1"
 FUNCIONES = [
     "roles",         # user / business_owner / admin
     "categorias",    # catálogo administrable
@@ -46,6 +52,8 @@ FUNCIONES = [
     "redes",         # instagram / facebook / whatsapp por negocio
     "horario24h",    # días marcados como abiertos las 24 horas
     "radio",         # el usuario elige la distancia de búsqueda
+    "subidas",       # imágenes a una API externa configurable desde el panel
+    "mapa",          # selector de coordenadas con mapa
 ]
 
 app = FastAPI(title="Qplan.mx API", version=API_VERSION)
@@ -102,6 +110,10 @@ ESQUEMA_REQUERIDO = {
         "tablas": [],
         "columnas": [("businesses", "instagram"), ("businesses", "facebook"),
                      ("businesses", "whatsapp")],
+    },
+    "migration_005_ajustes.sql": {
+        "tablas": ["app_settings"],
+        "columnas": [],
     },
 }
 
@@ -1608,6 +1620,74 @@ async def self_register_business(business: BusinessCreate, current_user=Depends(
     return serialize_business(row) | {
         "message": "Negocio registrado. Quedará visible cuando el administrador lo apruebe."
     }
+
+
+# ==================== AJUSTES Y SUBIDA DE IMÁGENES ====================
+#
+# La configuración de la API externa de imágenes vive en la base, no en el
+# .env, para que el administrador la cambie desde el panel si ese servicio
+# se cae o cambia de dirección. La llave nunca sale del servidor: el panel
+# solo recibe si está puesta y sus últimos cuatro caracteres.
+
+
+class UploadSettings(BaseModel):
+    activo: Optional[bool] = None
+    endpoint: Optional[str] = None
+    modo_clave: Optional[str] = None          # header | form | query
+    nombre_clave: Optional[str] = None
+    campo_archivo: Optional[str] = None
+    ruta_url_respuesta: Optional[str] = None
+    base_publica: Optional[str] = None
+    # Tamaño al que la API debe comprimir. 0 = que lo decida ella.
+    max_kb: Optional[int] = None
+    campo_max_kb: Optional[str] = None
+    # Omitir = conservar la llave actual. "" = borrarla. Texto = reemplazarla.
+    api_key: Optional[str] = None
+
+
+@api_router.get("/admin/settings/uploads")
+async def get_upload_settings(admin=Depends(require_admin)):
+    async with db_pool.acquire() as conn:
+        return subidas.config_publica(await subidas.leer_config(conn))
+
+
+@api_router.put("/admin/settings/uploads")
+async def put_upload_settings(payload: UploadSettings, admin=Depends(require_admin)):
+    # exclude_unset distingue "no mandó el campo" de "lo mandó vacío", que es
+    # justo lo que permite editar la dirección sin volver a teclear la llave.
+    cambios = payload.model_dump(exclude_unset=True)
+    api_key = cambios.pop("api_key", None)
+    async with db_pool.acquire() as conn:
+        return await subidas.guardar_config(conn, cambios, api_key)
+
+
+@api_router.post("/admin/settings/uploads/probar")
+async def probar_upload_settings(admin=Depends(require_admin)):
+    """Sube una imagen mínima y reporta qué contestó la API, sin adivinar."""
+    async with db_pool.acquire() as conn:
+        return await subidas.probar(conn)
+
+
+@api_router.post("/admin/uploads")
+async def subir_imagen(file: UploadFile = File(...), admin=Depends(require_admin)):
+    """
+    Recibe la imagen del panel y la reenvía a la API externa.
+
+    El navegador nunca habla directo con esa API: así la llave no se expone
+    y da igual cómo tenga configurado el CORS el otro proyecto.
+    """
+    contenido = await file.read()
+    async with db_pool.acquire() as conn:
+        return await subidas.subir(conn, file.filename, file.content_type, contenido)
+
+
+@api_router.post("/me/uploads")
+async def subir_imagen_dueno(file: UploadFile = File(...),
+                             current_user=Depends(require_business_owner)):
+    """Lo mismo, para que el dueño pueda cambiar el logo y las fotos de su negocio."""
+    contenido = await file.read()
+    async with db_pool.acquire() as conn:
+        return await subidas.subir(conn, file.filename, file.content_type, contenido)
 
 
 # ==================== APP SETUP ====================

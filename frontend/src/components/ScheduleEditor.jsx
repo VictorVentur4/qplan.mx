@@ -63,8 +63,8 @@ const ScheduleEditor = ({ value, onChange }) => {
 
       <div className="rounded-xl border border-[#262626] divide-y divide-[#262626] overflow-hidden">
         {value.map((d) => (
-          <div key={d.day} className="flex items-center gap-3 px-3 py-2 bg-[#0A0A0A]">
-            <span className="w-24 text-sm text-white flex-shrink-0">{DIAS[d.day]}</span>
+          <div key={d.day} className="flex items-center gap-3 px-3 py-2 bg-[#0A0A0A] flex-wrap">
+            <span className="w-20 sm:w-24 text-sm text-white flex-shrink-0">{DIAS[d.day]}</span>
 
             <Switch
               checked={!d.closed}
@@ -75,7 +75,7 @@ const ScheduleEditor = ({ value, onChange }) => {
             {d.closed ? (
               <span className="text-sm text-[#525252] flex-1">Cerrado</span>
             ) : (
-              <div className="flex items-center gap-2 flex-1 flex-wrap">
+              <div className="flex items-center gap-2 flex-1 flex-wrap min-w-0">
                 <button
                   type="button"
                   onClick={() => setDia(d.day, {
@@ -101,13 +101,13 @@ const ScheduleEditor = ({ value, onChange }) => {
                     <Input
                       type="time" value={d.open || ""}
                       onChange={(e) => setDia(d.day, { open: e.target.value })}
-                      className="bg-[#050505] border-[#262626] text-white h-9 w-32"
+                      className="bg-[#050505] border-[#262626] text-white h-9 w-28 sm:w-32"
                     />
                     <span className="text-[#525252] text-sm">a</span>
                     <Input
                       type="time" value={d.close || ""}
                       onChange={(e) => setDia(d.day, { close: e.target.value })}
-                      className="bg-[#050505] border-[#262626] text-white h-9 w-32"
+                      className="bg-[#050505] border-[#262626] text-white h-9 w-28 sm:w-32"
                     />
                   </>
                 )}

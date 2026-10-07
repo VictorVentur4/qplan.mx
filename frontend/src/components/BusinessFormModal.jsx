@@ -16,6 +16,8 @@ import { toast } from "sonner";
 import axiosInstance from "../api/axios";
 import ScheduleEditor from "./ScheduleEditor";
 import ImagesEditor from "./ImagesEditor";
+import ImageUploader from "./ImageUploader";
+import MapPicker from "./MapPicker";
 import AmenitiesPicker from "./AmenitiesPicker";
 import { emptySchedule, DIAS } from "../constants/businessTypes";
 
@@ -160,11 +162,15 @@ const BusinessFormModal = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-[#A3A3A3]">Logo (URL)</Label>
-              <Input value={formData.logo} onChange={set("logo")}
-                     className="bg-[#0A0A0A] border-[#262626] text-white" />
-            </div>
+            <ImageUploader
+              label="Logotipo"
+              value={formData.logo}
+              onUploaded={(url) => setFormData({ ...formData, logo: url })}
+              token={token}
+              scope={isAdmin ? "admin" : "owner"}
+              alto="h-32"
+              ayuda="Cuadrada se ve mejor. Si no subes nada, se muestra el icono de la categoría."
+            />
             <div className="space-y-2">
               <Label className="text-[#A3A3A3]">Sitio web</Label>
               <Input value={formData.website} onChange={set("website")}
@@ -230,6 +236,8 @@ const BusinessFormModal = ({
           <ImagesEditor
             value={formData.images}
             onChange={(v) => setFormData({ ...formData, images: v })}
+            token={token}
+            scope={isAdmin ? "admin" : "owner"}
           />
 
           <AmenitiesPicker
@@ -238,25 +246,33 @@ const BusinessFormModal = ({
             onChange={(v) => setFormData({ ...formData, amenities: v })}
           />
 
-          <div className={`grid gap-4 ${isAdmin ? "grid-cols-3" : "grid-cols-2"}`}>
+          <MapPicker
+            lat={typeof formData.latitude === "number" ? formData.latitude : null}
+            lng={typeof formData.longitude === "number" ? formData.longitude : null}
+            onChange={(la, lo) => setFormData({ ...formData, latitude: la, longitude: lo })}
+          />
+
+          {/* Los números quedan abajo: el mapa los llena, y aquí se afinan
+              o se verifican antes de guardar. */}
+          <div className={`grid gap-3 ${isAdmin ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
             <div className="space-y-2">
-              <Label className="text-[#A3A3A3]">Latitud</Label>
+              <Label className="text-[#A3A3A3] text-xs">Latitud</Label>
               <Input type="number" step="any" value={formData.latitude}
                      onChange={setNumber("latitude")} required
-                     className="bg-[#0A0A0A] border-[#262626] text-white" />
+                     className="bg-[#0A0A0A] border-[#262626] text-white h-10" />
             </div>
             <div className="space-y-2">
-              <Label className="text-[#A3A3A3]">Longitud</Label>
+              <Label className="text-[#A3A3A3] text-xs">Longitud</Label>
               <Input type="number" step="any" value={formData.longitude}
                      onChange={setNumber("longitude")} required
-                     className="bg-[#0A0A0A] border-[#262626] text-white" />
+                     className="bg-[#0A0A0A] border-[#262626] text-white h-10" />
             </div>
             {isAdmin && (
-              <div className="space-y-2">
-                <Label className="text-[#A3A3A3]">Rating</Label>
+              <div className="space-y-2 col-span-2 sm:col-span-1">
+                <Label className="text-[#A3A3A3] text-xs">Calificación</Label>
                 <Input type="number" step="0.1" min="0" max="5" value={formData.rating}
                        onChange={setNumber("rating")}
-                       className="bg-[#0A0A0A] border-[#262626] text-white" />
+                       className="bg-[#0A0A0A] border-[#262626] text-white h-10" />
               </div>
             )}
           </div>
